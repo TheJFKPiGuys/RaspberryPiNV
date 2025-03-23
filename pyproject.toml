@@ -1,0 +1,14 @@
+[project]
+name = "NeighbourhoodVigil-RPi"
+version = "1.0.0"
+description = "The Raspberry Pi side of NeighbourhoodVigil"
+authors = ["Joshua Mulchrone <20jmulchrone@jfk.herts.sch.uk>"]
+requires-python = ">=3.11"
+dependencies = [
+    "astral>=3.2",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.3",
+    "rpi-gpio>=0.7.1",
+    "smbus2>=0.5.0",
+    "urllib3>=2.3.0"
+    ]
