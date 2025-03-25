@@ -23,36 +23,44 @@ class SensorManager:
     def __init__(self):
         self.mock_mode = USE_MOCK
         self.session = self._setup_requests_session()
-
-        # Initialize sun tracking system
-        try:
-            self.stepper = StepperController(mock_mode=self.mock_mode)
-            logging.info("Stepper motor controller initialized")
-            self.sun_predictor = SunPredictor(LATITUDE, LONGITUDE)
-            logging.info("Sun position predictor initialized")
-        except Exception as e:
-            logging.error(f"Failed to initialize sun tracking system: {str(e)}")
-            if not self.mock_mode:
-                self.mock_mode = True
-                logging.info("Falling back to mock mode")
+        self.active_sensors = {}
 
         if not self.mock_mode:
             try:
                 self.bus = smbus2.SMBus(1)  # Use I2C bus 1
-                self.bme280 = BME280Sensor(self.bus, BME280_ADDR)
-                self.tsl2591 = TSL2591Sensor(self.bus, TSL2591_ADDR)
-                self.ltr390 = LTR390Sensor(self.bus, LTR390_ADDR)
-                self.icm20948 = ICM20948Sensor(self.bus, ICM20948_ADDR)
-                self.sgp40 = SGP40Sensor(self.bus, SGP40_ADDR)
-                logging.info("Hardware sensors initialized successfully")
+                # Initialize stepper and sun predictor first
+                self.stepper = StepperController(mock_mode=False)
+                self.sun_predictor = SunPredictor(LATITUDE, LONGITUDE)
+                logging.info("Sun tracking system initialized")
+                
+                # Try to initialize each sensor independently
+                sensor_classes = {
+                    'bme280': (BME280Sensor, BME280_ADDR),
+                    'tsl2591': (TSL2591Sensor, TSL2591_ADDR),
+                    'ltr390': (LTR390Sensor, LTR390_ADDR),
+                    'icm20948': (ICM20948Sensor, ICM20948_ADDR),
+                    'sgp40': (SGP40Sensor, SGP40_ADDR)
+                }
+
+                for name, (sensor_class, addr) in sensor_classes.items():
+                    try:
+                        self.active_sensors[name] = sensor_class(self.bus, addr)
+                        logging.info(f"Initialized {name} sensor")
+                    except Exception as e:
+                        logging.warning(f"Failed to initialize {name}: {str(e)}")
+
+                if not self.active_sensors:
+                    raise Exception("No sensors could be initialized")
+                
             except Exception as e:
-                logging.error(f"Failed to initialize hardware sensors: {str(e)}")
-                logging.info("Falling back to mock mode")
+                logging.error(f"Critical hardware initialization failed: {str(e)}")
                 self.mock_mode = True
 
         if self.mock_mode:
             self.mock_sensor = MockSensor()
-            logging.info("Mock sensor initialized")
+            self.stepper = StepperController(mock_mode=True)
+            self.sun_predictor = SunPredictor(LATITUDE, LONGITUDE)
+            logging.info("Mock mode initialized")
 
     def _setup_requests_session(self):
         session = requests.Session()
@@ -87,13 +95,17 @@ class SensorManager:
                 'location': {
                     'latitude': LATITUDE,
                     'longitude': LONGITUDE
-                },
-                'bme280': self.bme280.read(),
-                'tsl2591': self.tsl2591.read(),
-                'ltr390': self.ltr390.read(),
-                'icm20948': self.icm20948.read(),
-                'sgp40': self.sgp40.read()
+                }
             }
+            
+            # Read from successfully initialized sensors
+            for name, sensor in self.active_sensors.items():
+                try:
+                    data[name] = sensor.read()
+                except Exception as e:
+                    logging.error(f"Error reading {name}: {str(e)}")
+                    data[name] = None
+                    
             return data
         except Exception as e:
             logging.error(f"Error reading sensors: {str(e)}")
@@ -118,6 +130,13 @@ class SensorManager:
         logging.info(f"Starting sensor readings ({'mock' if self.mock_mode else 'hardware'} mode)")
         logging.info(f"Sending data to: {ENDPOINT_URL}")
         logging.info(f"Reading interval: {READ_INTERVAL} seconds")
+
+        # Set initial position on startup
+        try:
+            self.update_panel_position()
+            logging.info("Initial panel position set")
+        except Exception as e:
+            logging.error(f"Failed to set initial panel position: {str(e)}")
 
         try:
             while True:
