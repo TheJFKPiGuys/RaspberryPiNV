@@ -1,3 +1,6 @@
+# 3D Model File  
+https://www.printables.com/model/1242552-neighbourhood-vigil-raspberry-pi-case
+
 # Environmental Sensor and Solar Tracking System
 
 This application reads data from a Waveshare Environment Sensor HAT and controls a solar panel position using a PiStep2 HAT stepper motor controller.
